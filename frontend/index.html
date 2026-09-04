@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>BreakRadar</title>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #131a22; --border: #232d38; --text: #e6edf3; --muted: #8b98a5;
+    --low: #3fb950; --medium: #d29922; --high: #db6d28; --critical: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 24px 32px 12px; border-bottom: 1px solid var(--border); }
+  header h1 { margin: 0 0 4px; font-size: 22px; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; padding: 20px 32px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .card .value { font-size: 24px; font-weight: 600; margin-top: 4px; }
+  .card.critical .value { color: var(--critical); }
+  .card.high .value { color: var(--high); }
+  .card.medium .value { color: var(--medium); }
+  .filters { padding: 0 32px 12px; display: flex; gap: 8px; }
+  .filters button {
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
+  }
+  .filters button.active { border-color: #58a6ff; color: #58a6ff; }
+  table { width: 100%; border-collapse: collapse; padding: 0 32px; }
+  main { padding: 0 32px 32px; overflow-x: auto; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; }
+  .sev { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .sev.CRITICAL { background: rgba(248,81,73,.15); color: var(--critical); }
+  .sev.HIGH { background: rgba(219,109,40,.15); color: var(--high); }
+  .sev.MEDIUM { background: rgba(210,153,34,.15); color: var(--medium); }
+  .status.OPEN { color: var(--critical); }
+  .status.RESOLVED { color: var(--low); }
+  .status.AUTO_RESOLVED { color: var(--muted); }
+  button.resolve { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  button.resolve:hover { border-color: #58a6ff; color: #58a6ff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>BreakRadar</h1>
+  <p>Daily trade-break reconciliation — trade capture vs. counterparty confirmation</p>
+</header>
+
+<div class="cards" id="cards"></div>
+
+<div class="filters" id="filters">
+  <button data-sev="" class="active">All Open</button>
+  <button data-sev="CRITICAL">Critical</button>
+  <button data-sev="HIGH">High</button>
+  <button data-sev="MEDIUM">Medium</button>
+</div>
+
+<main>
+  <table>
+    <thead>
+      <tr>
+        <th>Trade ID</th><th>Symbol</th><th>Counterparty</th><th>Break Type</th>
+        <th>Severity</th><th>Exposure ($)</th><th>Settlement</th><th>Status</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</main>
+
+<script>
+const API = "http://localhost:8420/api";
+let currentSeverity = "";
+
+async function loadSummary() {
+  const s = await fetch(`${API}/summary`).then(r => r.json());
+  document.getElementById("cards").innerHTML = `
+    <div class="card"><div class="label">Open Breaks</div><div class="value">${s.open_breaks}</div></div>
+    <div class="card"><div class="label">Total $ At Risk</div><div class="value">$${(s.total_exposure_usd/1000).toFixed(0)}K</div></div>
+    <div class="card critical"><div class="label">Critical</div><div class="value">${s.by_severity.CRITICAL}</div></div>
+    <div class="card high"><div class="label">High</div><div class="value">${s.by_severity.HIGH}</div></div>
+    <div class="card medium"><div class="label">Medium</div><div class="value">${s.by_severity.MEDIUM}</div></div>
+  `;
+}
+
+async function loadBreaks() {
+  const url = new URL(`${API}/breaks`);
+  url.searchParams.set("status", "OPEN");
+  if (currentSeverity) url.searchParams.set("severity", currentSeverity);
+  const breaks = await fetch(url).then(r => r.json());
+  document.getElementById("rows").innerHTML = breaks.map(b => `
+    <tr>
+      <td>${b.trade_id}</td>
+      <td>${b.symbol}</td>
+      <td>${b.counterparty}</td>
+      <td>${b.break_type.replaceAll("_", " ")}</td>
+      <td><span class="sev ${b.severity}">${b.severity}</span></td>
+      <td>${b.exposure_usd.toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
+      <td>${b.settlement_date}</td>
+      <td class="status ${b.status}">${b.status}</td>
+      <td><button class="resolve" onclick="resolveBreak('${b.trade_id}')">Resolve</button></td>
+    </tr>
+  `).join("");
+}
+
+async function resolveBreak(id) {
+  await fetch(`${API}/breaks/${id}/resolve`, { method: "POST" });
+  await Promise.all([loadSummary(), loadBreaks()]);
+}
+
+document.getElementById("filters").addEventListener("click", (e) => {
+  if (e.target.tagName !== "BUTTON") return;
+  document.querySelectorAll("#filters button").forEach(b => b.classList.remove("active"));
+  e.target.classList.add("active");
+  currentSeverity = e.target.dataset.sev;
+  loadBreaks();
+});
+
+loadSummary();
+loadBreaks();
+</script>
+</body>
+</html>
