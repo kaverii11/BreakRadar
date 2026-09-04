@@ -1,5 +1,7 @@
 # BreakRadar
 
+video explanation: https://drive.google.com/file/d/1AuWKpE7YM9HzzWe1xO7Y1M5J_-aovos-/view?usp=sharing
+
 A daily trade-break reconciliation engine: matches a firm's own trade-capture blotter
 against the counterparty's confirmation feed, classifies every disagreement into a break
 type, scores it by $ notional exposure at risk, auto-resolves what's within tolerance,
@@ -8,6 +10,8 @@ and escalates the rest to a dashboard ranked by severity.
 This is the reconciliation/exception-management workflow that sits at the center of a
 trading-firm Operations desk: every trade needs its two independent records to agree
 before it can settle safely, and someone (or something) has to catch it when they don't.
+
+<img width="1400" height="700" alt="Screenshot 2026-09-04 at 15 48 34" src="https://github.com/user-attachments/assets/b42d7b5c-e7bb-4423-82f9-8377bfa91cb0" />
 
 ## Why this shape
 
