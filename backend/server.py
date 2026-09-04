@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+import audit
+from explain import explain_break
 from reconciler import reconcile, summarize
 
 app = FastAPI(title="BreakRadar")
@@ -15,6 +17,13 @@ app.add_middleware(
 BREAKS = reconcile("../data/trade_capture.csv", "../data/counterparty_confirm.csv")
 BREAKS_BY_ID = {b["trade_id"]: b for b in BREAKS}
 
+# Audit every auto-resolution from this run. Reset on startup so re-running the server
+# doesn't duplicate entries for the same synthetic dataset.
+audit.reset_log()
+for b in BREAKS:
+    if b["status"] == "AUTO_RESOLVED":
+        audit.record_auto_resolution(b)
+
 
 @app.get("/api/summary")
 def get_summary():
@@ -22,12 +31,14 @@ def get_summary():
 
 
 @app.get("/api/breaks")
-def list_breaks(severity: str | None = None, status: str | None = None):
+def list_breaks(severity: str | None = None, status: str | None = None, escalated: bool | None = None):
     results = BREAKS
     if severity:
         results = [b for b in results if b["severity"] == severity.upper()]
     if status:
         results = [b for b in results if b["status"] == status.upper()]
+    if escalated is not None:
+        results = [b for b in results if b["escalated"] == escalated]
 
     severity_rank = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
     results = sorted(results, key=lambda b: (severity_rank[b["severity"]], -b["exposure_usd"]))
@@ -42,6 +53,14 @@ def get_break(trade_id: str):
     return b
 
 
+@app.get("/api/breaks/{trade_id}/explain")
+def explain(trade_id: str):
+    b = BREAKS_BY_ID.get(trade_id)
+    if not b:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    return {"trade_id": trade_id, "explanation": explain_break(b)}
+
+
 @app.post("/api/breaks/{trade_id}/resolve")
 def resolve_break(trade_id: str):
     b = BREAKS_BY_ID.get(trade_id)
@@ -49,3 +68,8 @@ def resolve_break(trade_id: str):
         raise HTTPException(status_code=404, detail="Trade not found")
     b["status"] = "RESOLVED"
     return b
+
+
+@app.get("/api/audit-log")
+def get_audit_log():
+    return audit.load_log()

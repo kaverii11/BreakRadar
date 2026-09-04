@@ -10,26 +10,41 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, "Segoe UI", sans-serif; }
-  header { padding: 24px 32px 12px; border-bottom: 1px solid var(--border); }
+  header { padding: 24px 32px 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-end; }
   header h1 { margin: 0 0 4px; font-size: 22px; }
   header p { margin: 0; color: var(--muted); font-size: 13px; }
-  .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; padding: 20px 32px; }
+  nav { display: flex; gap: 4px; padding: 16px 32px 0; }
+  nav button {
+    background: transparent; border: none; color: var(--muted); padding: 8px 16px;
+    font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;
+  }
+  nav button.active { color: var(--text); border-bottom-color: #58a6ff; }
+  .cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; padding: 20px 32px; }
   .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
   .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  .card .value { font-size: 24px; font-weight: 600; margin-top: 4px; }
+  .card .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
   .card.critical .value { color: var(--critical); }
   .card.high .value { color: var(--high); }
   .card.medium .value { color: var(--medium); }
+  .kri-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 32px 20px; }
+  .kri-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .kri-panel h3 { margin: 0 0 10px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .bar-row { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 6px; }
+  .bar-row .name { width: 140px; color: var(--muted); }
+  .bar-row .bar-track { flex: 1; background: #1c2530; border-radius: 4px; height: 8px; overflow: hidden; }
+  .bar-row .bar-fill { height: 100%; background: #58a6ff; }
+  .bar-row .count { width: 28px; text-align: right; }
   .filters { padding: 0 32px 12px; display: flex; gap: 8px; }
   .filters button {
     background: var(--panel); border: 1px solid var(--border); color: var(--text);
     padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
   }
   .filters button.active { border-color: #58a6ff; color: #58a6ff; }
-  table { width: 100%; border-collapse: collapse; padding: 0 32px; }
+  table { width: 100%; border-collapse: collapse; }
   main { padding: 0 32px 32px; overflow-x: auto; }
   th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; white-space: nowrap; }
   th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; }
+  td.explain-cell { white-space: normal; max-width: 320px; color: var(--muted); font-size: 12px; }
   .sev { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
   .sev.CRITICAL { background: rgba(248,81,73,.15); color: var(--critical); }
   .sev.HIGH { background: rgba(219,109,40,.15); color: var(--high); }
@@ -37,49 +52,117 @@
   .status.OPEN { color: var(--critical); }
   .status.RESOLVED { color: var(--low); }
   .status.AUTO_RESOLVED { color: var(--muted); }
+  .aging.stale { color: var(--critical); font-weight: 600; }
   button.resolve { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
   button.resolve:hover { border-color: #58a6ff; color: #58a6ff; }
+  .escalate-tag { background: rgba(248,81,73,.15); color: var(--critical); padding: 1px 6px; border-radius: 8px; font-size: 10px; font-weight: 600; margin-left: 6px; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <header>
-  <h1>BreakRadar</h1>
-  <p>Daily trade-break reconciliation — trade capture vs. counterparty confirmation</p>
+  <div>
+    <h1>BreakRadar</h1>
+    <p>Daily trade-break reconciliation — trade capture vs. counterparty confirmation</p>
+  </div>
 </header>
+
+<nav id="tabs">
+  <button data-tab="queue" class="active">Break Queue</button>
+  <button data-tab="escalations">Escalation Queue</button>
+  <button data-tab="audit">Auto-Resolve Audit Log</button>
+</nav>
 
 <div class="cards" id="cards"></div>
 
-<div class="filters" id="filters">
-  <button data-sev="" class="active">All Open</button>
-  <button data-sev="CRITICAL">Critical</button>
-  <button data-sev="HIGH">High</button>
-  <button data-sev="MEDIUM">Medium</button>
+<div class="kri-row">
+  <div class="kri-panel">
+    <h3>Open Breaks by Type</h3>
+    <div id="byType"></div>
+  </div>
+  <div class="kri-panel">
+    <h3>Aging</h3>
+    <div id="aging"></div>
+  </div>
 </div>
 
-<main>
-  <table>
-    <thead>
-      <tr>
-        <th>Trade ID</th><th>Symbol</th><th>Counterparty</th><th>Break Type</th>
-        <th>Severity</th><th>Exposure ($)</th><th>Settlement</th><th>Status</th><th></th>
-      </tr>
-    </thead>
-    <tbody id="rows"></tbody>
-  </table>
-</main>
+<section id="view-queue">
+  <div class="filters" id="filters">
+    <button data-sev="" class="active">All Open</button>
+    <button data-sev="CRITICAL">Critical</button>
+    <button data-sev="HIGH">High</button>
+    <button data-sev="MEDIUM">Medium</button>
+  </div>
+  <main>
+    <table>
+      <thead>
+        <tr>
+          <th>Trade ID</th><th>Symbol</th><th>Counterparty</th><th>Break Type</th>
+          <th>Severity</th><th>Exposure ($)</th><th>Age (d)</th><th>Status</th><th>Explanation</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </main>
+</section>
+
+<section id="view-escalations" hidden>
+  <main>
+    <table>
+      <thead>
+        <tr>
+          <th>Trade ID</th><th>Symbol</th><th>Severity</th><th>Exposure ($)</th><th>Age (d)</th><th>Reason</th>
+        </tr>
+      </thead>
+      <tbody id="escalationRows"></tbody>
+    </table>
+  </main>
+</section>
+
+<section id="view-audit" hidden>
+  <main>
+    <table>
+      <thead>
+        <tr>
+          <th>Timestamp (UTC)</th><th>Trade ID</th><th>Break Type</th><th>Exposure ($)</th><th>Rule Fired</th>
+        </tr>
+      </thead>
+      <tbody id="auditRows"></tbody>
+    </table>
+  </main>
+</section>
 
 <script>
 const API = "http://localhost:8420/api";
 let currentSeverity = "";
+
+function fmtMoney(n) {
+  return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
 
 async function loadSummary() {
   const s = await fetch(`${API}/summary`).then(r => r.json());
   document.getElementById("cards").innerHTML = `
     <div class="card"><div class="label">Open Breaks</div><div class="value">${s.open_breaks}</div></div>
     <div class="card"><div class="label">Total $ At Risk</div><div class="value">$${(s.total_exposure_usd/1000).toFixed(0)}K</div></div>
+    <div class="card critical"><div class="label">Escalated</div><div class="value">${s.escalated_count}</div></div>
     <div class="card critical"><div class="label">Critical</div><div class="value">${s.by_severity.CRITICAL}</div></div>
     <div class="card high"><div class="label">High</div><div class="value">${s.by_severity.HIGH}</div></div>
     <div class="card medium"><div class="label">Medium</div><div class="value">${s.by_severity.MEDIUM}</div></div>
+  `;
+
+  const maxType = Math.max(1, ...Object.values(s.by_type));
+  document.getElementById("byType").innerHTML = Object.entries(s.by_type).map(([type, count]) => `
+    <div class="bar-row">
+      <div class="name">${type.replaceAll("_", " ")}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(count/maxType*100).toFixed(0)}%"></div></div>
+      <div class="count">${count}</div>
+    </div>
+  `).join("");
+
+  document.getElementById("aging").innerHTML = `
+    <div class="bar-row"><div class="name">Oldest open break</div><div class="count" style="width:auto">${s.oldest_open_days}d</div></div>
+    <div class="bar-row"><div class="name">Average age</div><div class="count" style="width:auto">${s.avg_open_days}d</div></div>
   `;
 }
 
@@ -90,22 +173,57 @@ async function loadBreaks() {
   const breaks = await fetch(url).then(r => r.json());
   document.getElementById("rows").innerHTML = breaks.map(b => `
     <tr>
-      <td>${b.trade_id}</td>
+      <td>${b.trade_id}${b.escalated ? '<span class="escalate-tag">ESCALATE</span>' : ''}</td>
       <td>${b.symbol}</td>
       <td>${b.counterparty}</td>
       <td>${b.break_type.replaceAll("_", " ")}</td>
       <td><span class="sev ${b.severity}">${b.severity}</span></td>
-      <td>${b.exposure_usd.toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
-      <td>${b.settlement_date}</td>
+      <td>${fmtMoney(b.exposure_usd)}</td>
+      <td class="aging ${b.aging_days > 5 ? 'stale' : ''}">${b.aging_days}</td>
       <td class="status ${b.status}">${b.status}</td>
+      <td class="explain-cell" id="explain-${b.trade_id}">loading…</td>
       <td><button class="resolve" onclick="resolveBreak('${b.trade_id}')">Resolve</button></td>
+    </tr>
+  `).join("");
+
+  breaks.forEach(b => {
+    fetch(`${API}/breaks/${b.trade_id}/explain`).then(r => r.json()).then(d => {
+      const cell = document.getElementById(`explain-${b.trade_id}`);
+      if (cell) cell.textContent = d.explanation;
+    });
+  });
+}
+
+async function loadEscalations() {
+  const breaks = await fetch(`${API}/breaks?status=OPEN&escalated=true`).then(r => r.json());
+  document.getElementById("escalationRows").innerHTML = breaks.map(b => `
+    <tr>
+      <td>${b.trade_id}</td>
+      <td>${b.symbol}</td>
+      <td><span class="sev ${b.severity}">${b.severity}</span></td>
+      <td>${fmtMoney(b.exposure_usd)}</td>
+      <td class="aging ${b.aging_days > 5 ? 'stale' : ''}">${b.aging_days}</td>
+      <td class="explain-cell">${b.escalation_reason}</td>
+    </tr>
+  `).join("");
+}
+
+async function loadAudit() {
+  const log = await fetch(`${API}/audit-log`).then(r => r.json());
+  document.getElementById("auditRows").innerHTML = log.map(e => `
+    <tr>
+      <td>${e.timestamp.replace("T", " ").slice(0, 19)}</td>
+      <td>${e.trade_id}</td>
+      <td>${e.break_type.replaceAll("_", " ")}</td>
+      <td>${fmtMoney(e.exposure_usd)}</td>
+      <td class="explain-cell">${e.rule_fired}</td>
     </tr>
   `).join("");
 }
 
 async function resolveBreak(id) {
   await fetch(`${API}/breaks/${id}/resolve`, { method: "POST" });
-  await Promise.all([loadSummary(), loadBreaks()]);
+  await Promise.all([loadSummary(), loadBreaks(), loadEscalations()]);
 }
 
 document.getElementById("filters").addEventListener("click", (e) => {
@@ -116,8 +234,20 @@ document.getElementById("filters").addEventListener("click", (e) => {
   loadBreaks();
 });
 
+document.getElementById("tabs").addEventListener("click", (e) => {
+  if (e.target.tagName !== "BUTTON") return;
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.remove("active"));
+  e.target.classList.add("active");
+  const tab = e.target.dataset.tab;
+  document.getElementById("view-queue").hidden = tab !== "queue";
+  document.getElementById("view-escalations").hidden = tab !== "escalations";
+  document.getElementById("view-audit").hidden = tab !== "audit";
+});
+
 loadSummary();
 loadBreaks();
+loadEscalations();
+loadAudit();
 </script>
 </body>
 </html>
